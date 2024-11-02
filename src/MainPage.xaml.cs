@@ -2,6 +2,9 @@
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Windows.Input;
+using CommunityToolkit.Maui.Alerts;
+using CommunityToolkit.Maui.Core;
+using eXtensionSharp;
 using Microsoft.Maui.Accessibility;
 using Microsoft.Maui.Controls;
 using Plugin.Maui.Audio;
@@ -59,33 +62,82 @@ public partial class MainPage : ContentPage
         }
         
         public ICommand DownloadCommand { get; set; }
+        public ICommand PlayCommand { get; set; }
+        public ICommand StopCommand { get; set; }
+        public ICommand PauseCommand { get; set; }
 
         private readonly IAudioManager _audioManager;
+        private IAudioPlayer? _audioPlayer;
         public MainViewModel(IAudioManager audioManager)
         {
             this.Url = "https://www.youtube.com/watch?v=kPa7bsKwL-c";
             _audioManager = audioManager;
             DownloadCommand = new Command(OnDownloadClicked);
+            PlayCommand = new Command(OnPlayClicked);
+            StopCommand = new Command(OnStopClicked);
+            PauseCommand = new Command(OnPauseClicked);
+        }
+
+        private void OnPauseClicked()
+        {
+            _audioPlayer.Pause();
+        }
+
+        private void OnStopClicked()
+        {
+            _audioPlayer.Stop();
+        }
+
+        private void OnPlayClicked()
+        {
+            var path = Microsoft.Maui.Storage.Preferences.Get("music", string.Empty);
+            if (_audioPlayer.xIsEmpty())
+            {
+                #if WINDOWS
+                var stream = File.OpenRead(path);
+                _audioPlayer = _audioManager.CreatePlayer(stream);
+                #elif ANDROID
+                _audioPlayer = _audioManager.CreatePlayer(path);
+                #endif
+            }
+            
+            _audioPlayer.Play();
         }
 
         private async void OnDownloadClicked()
         {
-            await Task.Run(async () =>
+            CancellationTokenSource cancellationTokenSource = new CancellationTokenSource();
+
+            var path = Microsoft.Maui.Storage.Preferences.Get("music", string.Empty);
+            if (path.xIsEmpty())
             {
-                var youtube = new YoutubeClient();
+                var toast = Toast.Make("downloading", ToastDuration.Short, 14);
+                await toast.Show(cancellationTokenSource.Token);
+                
+                await Task.Factory.StartNew(async () =>
+                {
+                    var youtube = new YoutubeClient();
 
-                // You can specify either the video URL or its ID
-                var videoUrl = this.Url;
-                var streamManifest = await youtube.Videos.Streams.GetManifestAsync(videoUrl);
-                var streamInfo = streamManifest.GetAudioOnlyStreams().GetWithHighestBitrate();
+                    // You can specify either the video URL or its ID
+                    var videoUrl = this.Url;
+                    var video = await youtube.Videos.GetAsync(videoUrl);
 
-                var targetPath = Path.Combine(FileSystem.AppDataDirectory, $"{Guid.NewGuid()}.mp3");
-                await youtube.Videos.Streams.DownloadAsync(streamInfo, targetPath);
+                    var title = video.Title; // "Collections - Blender 2.80 Fundamentals"
 
-                var player = _audioManager.CreatePlayer(targetPath);
-                player.Play();
-            });
+                    var streamManifest = await youtube.Videos.Streams.GetManifestAsync(videoUrl);
+                    var streamInfo = streamManifest.GetAudioOnlyStreams().GetWithHighestBitrate();
 
+                    var targetPath = Path.Combine(FileSystem.AppDataDirectory, $"{title}.mp3");
+                    await youtube.Videos.Streams.DownloadAsync(streamInfo, targetPath);
+                    Microsoft.Maui.Storage.Preferences.Set("music", targetPath);
+                });
+                
+                toast = Toast.Make("downloaded", ToastDuration.Short, 14);
+                await toast.Show(cancellationTokenSource.Token);                
+            }
+
+            var toast2 = Toast.Make("already downloaded", ToastDuration.Short, 14);
+            await toast2.Show(cancellationTokenSource.Token);             
         }
     }
 }

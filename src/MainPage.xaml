@@ -35,6 +35,9 @@
                 SemanticProperties.Hint="Counts the number of times you click"
                 Command="{Binding DownloadCommand}"
                 HorizontalOptions="Fill" />
+            <Button Text="Play" Command="{Binding PlayCommand}"/>
+            <Button Text="Pause" Command="{Binding PauseCommand}"/>
+            <Button Text="Stop" Command="{Binding StopCommand}"/>
         </VerticalStackLayout>
     </ScrollView>
 
